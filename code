@@ -1,0 +1,254 @@
+// Pin Definitions
+const int buttonPin = 8;
+const int ledPins[] = {2, 3, 4, 5, 6, 7};
+int ledCount = 6;
+
+// Game Variables
+int score = 0;
+bool gameRunning = true;
+int gameMode = -1;
+unsigned long startTime;
+unsigned long elapsedTime;
+
+// Button Variables
+bool buttonPressed = false;
+unsigned long lastDebounceTime = 0;
+unsigned long debounceDelay = 50;
+int buttonState = HIGH;
+int lastButtonState = HIGH;
+
+// Game Mode 0 Variables
+int currentLED = 0;
+int direction = 1; // 1 for right, -1 for left
+unsigned long ledTimer = 0;
+unsigned long ledInterval = 1000; // Default to slow (1 second)
+int speedSelection = 0; // 0 = Slow, 1 = Medium, 2 = Fast
+
+// Game Mode 1 Variables
+int randomLED = 0;
+unsigned long ledDisplayTime = 0;
+unsigned long ledDisplayInterval = 1000;
+int buttonPressCounter = 0;
+
+// Function Declarations
+void setupMenu();
+void setupGameMode0();
+void setupGameMode1();
+void playGameMode0();
+void playGameMode1();
+void resetGame();
+void displayScore();
+void printScore();
+void clearSerialMonitor();
+
+void setup() {
+  Serial.begin(9600);
+  
+  pinMode(buttonPin, INPUT_PULLUP);
+  
+  for (int i = 0; i < ledCount; i++) {
+    pinMode(ledPins[i], OUTPUT);
+  }
+  
+  setupMenu();
+}
+
+void loop() {
+  // Handle button press
+  int reading = digitalRead(buttonPin);
+  if (reading != lastButtonState) {
+    lastDebounceTime = millis();
+  }
+  
+  if ((millis() - lastDebounceTime) > debounceDelay) {
+    if (reading != buttonState) {
+      buttonState = reading;
+      if (buttonState == LOW) {
+        buttonPressed = true;
+      }
+    }
+  }
+  
+  lastButtonState = reading;
+
+  // Handle game modes
+  if (gameRunning) {
+    if (gameMode == 0) {
+      playGameMode0();
+    } else if (gameMode == 1) {
+      playGameMode1();
+    }
+  }
+}
+
+void setupMenu() {
+  clearSerialMonitor();
+  Serial.println("Welcome to the Reaction Time Game!");
+  Serial.println("Select Game Mode:");
+  Serial.println("0 - Catch the Running Lights");
+  Serial.println("1 - Identify the LED");
+  
+  while (Serial.available() == 0); // Wait for input
+  gameMode = Serial.parseInt();
+  
+  if (gameMode == 0) {
+    setupGameMode0();
+  } else if (gameMode == 1) {
+    setupGameMode1();
+  }
+}
+
+void setupGameMode0() {
+  clearSerialMonitor();
+  Serial.println("Catch the Running Lights");
+  Serial.println("Select Speed:");
+  Serial.println("0 - Slow (1 sec)");
+  Serial.println("1 - Medium (0.5 sec)");
+  Serial.println("2 - Fast (0.25 sec)");
+  
+  while (Serial.available() == 0); // Wait for input
+  speedSelection = Serial.parseInt();
+  
+  if (speedSelection == 0) {
+    ledInterval = 1000;
+  } else if (speedSelection == 1) {
+    ledInterval = 500;
+  } else if (speedSelection == 2) {
+    ledInterval = 250;
+  }
+  
+  startTime = millis();
+  gameRunning = true;
+  currentLED = 0;
+  direction = 1;
+  score = 0;
+  printScore();
+}
+
+void playGameMode0() {
+  // Check if it's time to move to the next LED
+  if (millis() - ledTimer >= ledInterval) {
+    ledTimer = millis();
+    digitalWrite(ledPins[currentLED], LOW); // Turn off the current LED
+    
+    // Move to the next LED
+    currentLED += direction;
+    if (currentLED == ledCount - 1 || currentLED == 0) {
+      direction = -direction; // Reverse direction at the end
+    }
+    
+    digitalWrite(ledPins[currentLED], HIGH); // Turn on the new LED
+  }
+
+  // Check button press
+  if (buttonPressed) {
+    buttonPressed = false;  // Reset button press flag
+    if (currentLED == 0 || currentLED == ledCount - 1) {
+      score += 2; // Correct timing
+    } else {
+      score -= 1; // Incorrect timing
+    }
+
+    printScore(); // Update the score on Serial Monitor after button press
+
+    if (score >= 20) {
+      gameRunning = false;
+      elapsedTime = millis() - startTime;
+      displayScore();
+    }
+  }
+}
+
+void setupGameMode1() {
+  clearSerialMonitor();
+  Serial.println("Identify the LED");
+  Serial.println("Select Speed:");
+  Serial.println("0 - Slow (1 sec)");
+  Serial.println("1 - Medium (0.5 sec)");
+  Serial.println("2 - Fast (0.25 sec)");
+  
+  while (Serial.available() == 0); // Wait for input
+  speedSelection = Serial.parseInt();
+  
+  if (speedSelection == 0) {
+    ledDisplayInterval = 1000;
+  } else if (speedSelection == 1) {
+    ledDisplayInterval = 500;
+  } else if (speedSelection == 2) {
+    ledDisplayInterval = 250;
+  }
+  
+  startTime = millis();
+  gameRunning = true;
+  score = 0;
+  printScore();
+}
+
+void playGameMode1() {
+  if (millis() - ledDisplayTime >= ledDisplayInterval) {
+    ledDisplayTime = millis();
+    randomLED = random(0, ledCount);
+    
+    for (int i = 0; i < ledCount; i++) {
+      digitalWrite(ledPins[i], LOW);
+    }
+    
+    digitalWrite(ledPins[randomLED], HIGH);
+    buttonPressCounter = 0;
+  }
+
+  // Check button presses
+  if (buttonPressed) {
+    buttonPressed = false;
+    buttonPressCounter++;
+    if (buttonPressCounter == randomLED + 1) {
+      score += 2;
+    } else {
+      score -= 1;
+    }
+
+    printScore(); // Update the score after each button press
+
+    if (score >= 20) {
+      gameRunning = false;
+      elapsedTime = millis() - startTime;
+      displayScore();
+    }
+  }
+}
+
+void printScore() {
+  Serial.print("Score: ");
+  Serial.println(score);
+}
+
+void displayScore() {
+  Serial.println("Game Over!");
+  Serial.print("Final Score: ");
+  Serial.println(score);
+  Serial.print("Time Taken: ");
+  Serial.print(elapsedTime / 1000);
+  Serial.println(" seconds");
+
+  resetGame();
+}
+
+void resetGame() {
+  Serial.println("Do you want to play again? (y/n)");
+  while (Serial.available() == 0); // Wait for input
+  char playAgain = Serial.read();
+  
+  if (playAgain == 'y' || playAgain == 'Y') {
+    setupMenu();
+  } else {
+    Serial.println("Goodbye!");
+    gameRunning = false;
+  }
+}
+
+void clearSerialMonitor() {
+  // Clear serial monitor for a better UX
+  for (int i = 0; i < 10; i++) {
+    Serial.println();
+  }
+}
